@@ -1,10 +1,12 @@
-# City Driver 2D
+# City Driver
 
 Un semplice simulatore di guida 2D top-down creato con HTML, CSS e JavaScript Canvas.
 
 ## Descrizione
 
-City Driver 2D è un gioco in cui controlli un'auto in una città generata proceduralmente con traffico AI e semafori funzionanti. L'obiettivo è guidare rispettando le regole della strada, evitando collisioni e infrazioni.
+City Driver è un gioco in cui controlli un'auto in una città generata proceduralmente con traffico AI e semafori funzionanti. L'obiettivo è guidare rispettando le regole della strada, evitando collisioni e infrazioni.
+
+**Demo Online:** Prova la versione live qui: [https://city-driver.vercel.app](https://city-driver.vercel.app)
 
 ![Anteprima Interfaccia Page Builder](screenshot/previewInterface_000.jpg)
 
@@ -20,7 +22,7 @@ City Driver 2D è un gioco in cui controlli un'auto in una città generata proce
 
 ## Funzionalità Principali
 
-*   **Mondo Generato Proceduralmente:** La mappa della città con strade, incroci ed edifici viene creata casualmente ad ogni avvio.
+*   **Mondo Generato Proceduralmente:** La mappa della città con strade, incroci ed edifici viene creata casualmente ad ogni avvio. Le aree verdi rappresentano l'erba e sono percorribili, mentre le aree grigie scure rappresentano gli edifici e fungono da ostacoli.
 *   **Traffico AI:** Auto controllate dal computer che guidano per la città, si fermano ai semafori e cercano di evitare collisioni.
 *   **Semafori Funzionanti:** Semafori agli incroci che cambiano stato (verde, giallo, rosso) a intervalli regolari.
 *   **Fisica Semplice:** Modello di guida basilare con accelerazione, frenata, attrito e sterzo.
