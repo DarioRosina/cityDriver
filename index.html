@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Driver 2D</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #e0e0e0; /* Grigio chiaro per sfondo pagina */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        #gameContainer {
+            position: relative;
+            border: 2px solid #333;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
+        }
+        canvas {
+            display: block;
+            background-color: #90ee90; /* Verde chiaro per aree non stradali */
+        }
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            box-shadow: 0 0 5px rgba(0,0,0,0.1);
+            color: #333;
+            font-size: 14px;
+        }
+        #hud p {
+            margin: 4px 0;
+        }
+        #minimapContainer {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 120px;
+            height: 120px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        #minimapCanvas {
+            width: 100%;
+            height: 100%;
+        }
+        #messageBox {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(50, 50, 50, 0.9);
+            padding: 25px 40px;
+            border-radius: 10px;
+            border: 2px solid #fff;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            text-align: center;
+            color: #fff;
+            font-size: 1.5em;
+            display: none;
+            z-index: 100;
+        }
+        #messageBox button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #4CAF50; /* Verde */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: background-color 0.3s;
+        }
+        #messageBox button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="hud">
+            <p>Velocità: <span id="speed">0</span> km/h</p>
+            <p>Infrazioni: <span id="infractions">0</span></p>
+        </div>
+        <div id="minimapContainer">
+            <canvas id="minimapCanvas"></canvas>
+        </div>
+        <div id="messageBox">
+            <p id="messageText"></p>
+            <button id="restartButton">Ricomincia</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Setup Canvas e Contesto ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const minimapCanvas = document.getElementById('minimapCanvas');
+        const minimapCtx = minimapCanvas.getContext('2d');
+
+        // Dimensioni (adattabili)
+        const canvasWidth = 800;
+        const canvasHeight = 600;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        minimapCanvas.width = 120;
+        minimapCanvas.height = 120;
+
+        // --- Costanti di Gioco ---
+        const TILE_SIZE = 40; // Dimensione di una cella della griglia
+        const GRID_COLS = 30; // Numero colonne griglia mondo
+        const GRID_ROWS = 25; // Numero righe griglia mondo
+        const WORLD_WIDTH = GRID_COLS * TILE_SIZE;
+        const WORLD_HEIGHT = GRID_ROWS * TILE_SIZE;
+
+        // Tipi di Tile
+        const TILE_GRASS = 0;
+        const TILE_ROAD_V = 1; // Verticale
+        const TILE_ROAD_H = 2; // Orizzontale
+        const TILE_INTERSECTION = 3;
+        const TILE_BUILDING = 4;
+
+        // --- Stato del Gioco ---
+        let player;
+        let aiCars = [];
+        let trafficLights = [];
+        let gameGrid = []; // Griglia del mondo
+        let cameraX = 0;
+        let cameraY = 0;
+        let infractions = 0;
+        let gameOver = false;
+        const keys = { w: false, s: false, a: false, d: false, ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+        let lastTime = 0;
+
+        // --- Classi ---
+
+        // Classe Auto (Base per Giocatore e AI)
+        class Car {
+            constructor(x, y, width, height, color, maxSpeed = 3, acceleration = 0.05, friction = 0.02, turnSpeed = 0.05) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.color = color;
+                this.speed = 0;
+                this.angle = -Math.PI / 2; // Angolo iniziale (verso l'alto)
+                this.maxSpeed = maxSpeed;
+                this.acceleration = acceleration;
+                this.friction = friction;
+                this.turnSpeed = turnSpeed;
+                this.isAccelerating = false;
+                this.isBraking = false;
+                this.isTurningLeft = false;
+                this.isTurningRight = false;
+                this.collided = false;
+            }
+
+            update(delta) {
+                // Movimento
+                if (this.isAccelerating) {
+                    this.speed += this.acceleration;
+                }
+                if (this.isBraking) {
+                    this.speed -= this.acceleration * 1.5; // Frena più velocemente
+                }
+
+                // Attrito
+                if (this.speed > 0) {
+                    this.speed -= this.friction;
+                    if (this.speed < 0) this.speed = 0;
+                } else if (this.speed < 0) {
+                    this.speed += this.friction;
+                    if (this.speed > 0) this.speed = 0;
+                }
+
+                // Limita velocità
+                this.speed = Math.max(-this.maxSpeed / 2, Math.min(this.maxSpeed, this.speed)); // Permette retromarcia limitata
+
+                // Sterzo (solo se si muove)
+                if (Math.abs(this.speed) > 0.1) {
+                    const turnDirection = this.speed > 0 ? 1 : -1; // Inverte sterzo in retro
+                    if (this.isTurningLeft) {
+                        this.angle -= this.turnSpeed * turnDirection;
+                    }
+                    if (this.isTurningRight) {
+                        this.angle += this.turnSpeed * turnDirection;
+                    }
+                }
+
+                // Applica movimento basato su angolo e velocità
+                this.x += Math.cos(this.angle) * this.speed * delta * 60; // Scala per delta
+                this.y += Math.sin(this.angle) * this.speed * delta * 60;
+
+                 // Reset flags input (per AI verranno impostati diversamente)
+                 if (this === player) { // Solo per il giocatore
+                    this.isAccelerating = keys.w || keys.ArrowUp;
+                    this.isBraking = keys.s || keys.ArrowDown;
+                    this.isTurningLeft = keys.a || keys.ArrowLeft;
+                    this.isTurningRight = keys.d || keys.ArrowRight;
+                }
+            }
+
+            draw(ctx, cameraX, cameraY) {
+                if (this.collided) {
+                    ctx.fillStyle = 'darkred'; // Colore collisione
+                } else {
+                    ctx.fillStyle = this.color;
+                }
+                ctx.save(); // Salva stato contesto
+                ctx.translate(this.x - cameraX, this.y - cameraY); // Trasla al centro dell'auto (relativo alla camera)
+                ctx.rotate(this.angle); // Ruota
+                ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height); // Disegna rettangolo centrato
+
+                // Aggiungi un piccolo indicatore di direzione (es. un triangolo o linea)
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.beginPath();
+                ctx.moveTo(this.width * 0.4, 0); // Punta avanti
+                ctx.lineTo(this.width * 0.2, -this.height * 0.3);
+                ctx.lineTo(this.width * 0.2, this.height * 0.3);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore(); // Ripristina stato contesto
+            }
+
+            // Ottiene i 4 angoli del rettangolo ruotato (per collisioni)
+            getBounds() {
+                const corners = [];
+                const angle = this.angle;
+                const hw = this.width / 2;
+                const hh = this.height / 2;
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+
+                corners.push({ x: this.x + hw * cos - hh * sin, y: this.y + hw * sin + hh * cos }); // Top Right
+                corners.push({ x: this.x - hw * cos - hh * sin, y: this.y - hw * sin + hh * cos }); // Top Left
+                corners.push({ x: this.x - hw * cos + hh * sin, y: this.y - hw * sin - hh * cos }); // Bottom Left
+                corners.push({ x: this.x + hw * cos + hh * sin, y: this.y + hw * sin - hh * cos }); // Bottom Right
+                return corners;
+            }
+        }
+
+        // Classe Semaforo
+        class TrafficLight {
+            constructor(gridX, gridY, initialState = 'green', direction = 'v') { // direction: 'v' o 'h'
+                this.gridX = gridX;
+                this.gridY = gridY;
+                this.x = gridX * TILE_SIZE + TILE_SIZE / 2;
+                this.y = gridY * TILE_SIZE + TILE_SIZE / 2;
+                this.state = initialState; // 'red', 'yellow', 'green'
+                this.timer = this.getDuration(initialState);
+                this.direction = direction; // Per ora influenza solo il disegno/posizionamento
+                 this.radius = TILE_SIZE * 0.15;
+            }
+
+            getDuration(state) {
+                switch (state) {
+                    case 'green': return 7 + Math.random() * 5; // 7-12 sec
+                    case 'yellow': return 1.5; // 1.5 sec
+                    case 'red': return 7 + Math.random() * 5; // 7-12 sec
+                    default: return 5;
+                }
+            }
+
+            update(delta) {
+                this.timer -= delta;
+                if (this.timer <= 0) {
+                    switch (this.state) {
+                        case 'green':
+                            this.state = 'yellow';
+                            break;
+                        case 'yellow':
+                            this.state = 'red';
+                            break;
+                        case 'red':
+                            this.state = 'green';
+                            break;
+                    }
+                    this.timer = this.getDuration(this.state);
+                }
+            }
+
+            draw(ctx, cameraX, cameraY) {
+                const screenX = this.x - cameraX;
+                const screenY = this.y - cameraY;
+                const lightSize = this.radius * 2;
+                const offset = TILE_SIZE * 0.35; // Offset dal centro incrocio
+
+                // Posiziona in base alla direzione (semplificato)
+                let drawX = screenX;
+                let drawY = screenY;
+                if (this.direction === 'v') { // Semaforo per traffico verticale
+                    drawY = screenY - offset;
+                } else { // Semaforo per traffico orizzontale
+                    drawX = screenX - offset;
+                }
+
+                // Disegna le 3 luci (spente o accese)
+                ctx.fillStyle = (this.state === 'red') ? 'red' : '#500';
+                ctx.beginPath();
+                ctx.arc(drawX, drawY - lightSize * 1.1, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = (this.state === 'yellow') ? 'yellow' : '#550';
+                ctx.beginPath();
+                ctx.arc(drawX, drawY, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = (this.state === 'green') ? '#0f0' : '#050';
+                ctx.beginPath();
+                ctx.arc(drawX, drawY + lightSize * 1.1, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // --- Funzioni di Inizializzazione ---
+
+        function createWorldGrid() {
+            gameGrid = [];
+            for (let r = 0; r < GRID_ROWS; r++) {
+                gameGrid[r] = [];
+                for (let c = 0; c < GRID_COLS; c++) {
+                    // Logica per creare strade e incroci
+                    const isRoadCol = (c % 5 === 1 || c % 5 === 3); // Colonne stradali
+                    const isRoadRow = (r % 4 === 1 || r % 4 === 3); // Righe stradali
+
+                    if (isRoadCol && isRoadRow) {
+                        gameGrid[r][c] = TILE_INTERSECTION;
+                    } else if (isRoadCol) {
+                        gameGrid[r][c] = TILE_ROAD_V;
+                    } else if (isRoadRow) {
+                        gameGrid[r][c] = TILE_ROAD_H;
+                    } else {
+                        // Aree non stradali - alterna erba e edifici
+                        if (Math.random() < 0.6 && !isRoadCol && !isRoadRow) { // 60% probabilità edificio
+                            gameGrid[r][c] = TILE_BUILDING;
+                        } else {
+                            gameGrid[r][c] = TILE_GRASS;
+                        }
+                    }
+                }
+            }
+        }
+
+        function initializeTrafficLights() {
+            trafficLights = [];
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    if (gameGrid[r][c] === TILE_INTERSECTION) {
+                        // Aggiungi due semafori per incrocio (uno per direzione)
+                        // Stato iniziale casuale ma sincronizzato per direzioni opposte
+                        const initialStateV = Math.random() < 0.5 ? 'green' : 'red';
+                        const initialStateH = initialStateV === 'green' ? 'red' : 'green';
+                        trafficLights.push(new TrafficLight(c, r, initialStateV, 'v'));
+                        trafficLights.push(new TrafficLight(c, r, initialStateH, 'h'));
+                    }
+                }
+            }
+        }
+
+        function initializePlayer() {
+            // Trova una posizione iniziale su una strada
+            let startX, startY;
+            let found = false;
+            while (!found) {
+                const r = Math.floor(Math.random() * (GRID_ROWS - 2)) + 1;
+                const c = Math.floor(Math.random() * (GRID_COLS - 2)) + 1;
+                if (gameGrid[r][c] === TILE_ROAD_V || gameGrid[r][c] === TILE_ROAD_H) {
+                    startX = c * TILE_SIZE + TILE_SIZE / 2;
+                    startY = r * TILE_SIZE + TILE_SIZE / 2;
+                    found = true;
+                }
+            }
+            // player = new Car(startX, startY, TILE_SIZE * 0.3, TILE_SIZE * 0.5, '#007bff', 4, 0.08, 0.03, 0.06); // Auto blu, più veloce
+            player = new Car(startX, startY, TILE_SIZE * 0.5, TILE_SIZE * 0.3, '#007bff', 4, 0.08, 0.03, 0.06); // Larghezza > Altezza per renderla più lunga
+            player.angle = Math.random() * Math.PI * 2; // Angolo iniziale casuale
+        }
+
+        function spawnAICar() {
+            if (aiCars.length >= 15) return; // Limita numero AI
+
+            let startX, startY, startAngle;
+            let startTileType;
+            let edge = Math.floor(Math.random() * 4); // 0: top, 1: bottom, 2: left, 3: right
+
+            let r, c;
+            let attempts = 0;
+            do {
+                if (edge === 0) { // Top
+                    c = Math.floor(Math.random() * GRID_COLS);
+                    r = 0;
+                    startAngle = Math.PI / 2; // Verso il basso
+                } else if (edge === 1) { // Bottom
+                    c = Math.floor(Math.random() * GRID_COLS);
+                    r = GRID_ROWS - 1;
+                    startAngle = -Math.PI / 2; // Verso l'alto
+                } else if (edge === 2) { // Left
+                    r = Math.floor(Math.random() * GRID_ROWS);
+                    c = 0;
+                    startAngle = 0; // Verso destra
+                } else { // Right
+                    r = Math.floor(Math.random() * GRID_ROWS);
+                    c = GRID_COLS - 1;
+                    startAngle = Math.PI; // Verso sinistra
+                }
+                startTileType = (gameGrid[r] && gameGrid[r][c] !== undefined) ? gameGrid[r][c] : TILE_GRASS;
+                attempts++;
+            } while (!(startTileType === TILE_ROAD_H || startTileType === TILE_ROAD_V || startTileType === TILE_INTERSECTION) && attempts < 50);
+
+            if (attempts < 50) {
+                startX = c * TILE_SIZE + TILE_SIZE / 2;
+                startY = r * TILE_SIZE + TILE_SIZE / 2;
+                const color = `hsl(${Math.random() * 60 + 180}, 50%, 60%)`; // Colori casuali (es. grigi, rossi, gialli)
+                // const ai = new Car(startX, startY, TILE_SIZE * 0.3, TILE_SIZE * 0.5, color, 2.5, 0.04, 0.02, 0.04);
+                const ai = new Car(startX, startY, TILE_SIZE * 0.5, TILE_SIZE * 0.3, color, 2.5, 0.04, 0.02, 0.04); // Larghezza > Altezza per renderla più lunga
+                ai.angle = startAngle;
+                ai.isAI = true;
+                ai.targetAngle = startAngle; // Angolo desiderato
+                ai.state = 'driving'; // 'driving', 'stopping', 'waiting'
+                ai.patience = 3 + Math.random() * 5; // Tempo di attesa prima di riprovare se bloccato
+                aiCars.push(ai);
+            }
+        }
+
+        // --- Funzioni di Aggiornamento ---
+
+        function updateCamera() {
+            // Centra la camera sul giocatore, con un po' di lag
+            const targetX = player.x - canvasWidth / 2;
+            const targetY = player.y - canvasHeight / 2;
+            const lerpFactor = 0.1;
+
+            cameraX += (targetX - cameraX) * lerpFactor;
+            cameraY += (targetY - cameraY) * lerpFactor;
+
+            // Limita camera ai bordi del mondo
+            cameraX = Math.max(0, Math.min(WORLD_WIDTH - canvasWidth, cameraX));
+            cameraY = Math.max(0, Math.min(WORLD_HEIGHT - canvasHeight, cameraY));
+        }
+
+        function updateAI(ai, delta) {
+            // Logica AI di base
+            const currentGridX = Math.floor(ai.x / TILE_SIZE);
+            const currentGridY = Math.floor(ai.y / TILE_SIZE);
+            const currentTile = (gameGrid[currentGridY] && gameGrid[currentGridY][currentGridX]) || TILE_GRASS;
+
+            let targetSpeed = ai.maxSpeed * 0.8; // Velocità di crociera AI
+            ai.isTurningLeft = false;
+            ai.isTurningRight = false;
+            ai.isAccelerating = false;
+            ai.isBraking = false;
+
+            // Controlla tile davanti
+            const lookAheadDist = TILE_SIZE * 0.8;
+            const frontX = ai.x + Math.cos(ai.angle) * lookAheadDist;
+            const frontY = ai.y + Math.sin(ai.angle) * lookAheadDist;
+            const frontGridX = Math.floor(frontX / TILE_SIZE);
+            const frontGridY = Math.floor(frontY / TILE_SIZE);
+            const frontTile = (gameGrid[frontGridY] && gameGrid[frontGridY][frontGridX]) || TILE_GRASS;
+
+            let shouldStop = false;
+            let needsTurn = false;
+
+            // 1. Controllo Semafori
+            if (currentTile === TILE_INTERSECTION) {
+                const direction = (Math.abs(Math.cos(ai.angle)) > Math.abs(Math.sin(ai.angle))) ? 'h' : 'v'; // Direzione prevalente
+                trafficLights.forEach(light => {
+                    if (light.gridX === currentGridX && light.gridY === currentGridY && light.direction === direction) {
+                        if (light.state === 'red' || light.state === 'yellow') {
+                            // Calcola distanza dal centro incrocio
+                            const distToCenter = Math.hypot(ai.x - light.x, ai.y - light.y);
+                            if (distToCenter < TILE_SIZE * 0.6) { // Se vicino al centro e rosso/giallo
+                                shouldStop = true;
+                            }
+                        }
+                    }
+                });
+            }
+
+            // 2. Controllo Ostacoli (altre auto AI e giocatore)
+            const checkDistance = ai.width * 3; // Distanza di controllo
+            const checkX = ai.x + Math.cos(ai.angle) * checkDistance;
+            const checkY = ai.y + Math.sin(ai.angle) * checkDistance;
+
+            [player, ...aiCars].forEach(otherCar => {
+                if (otherCar === ai) return; // Non controllare se stesso
+                const distSq = Math.pow(checkX - otherCar.x, 2) + Math.pow(checkY - otherCar.y, 2);
+                if (distSq < Math.pow(checkDistance, 2)) { // Se un'altra auto è vicina davanti
+                    shouldStop = true;
+                }
+            });
+
+
+            // 3. Logica di Guida e Sterzo (Molto Semplificata)
+            if (currentTile === TILE_ROAD_V && frontTile !== TILE_ROAD_V && frontTile !== TILE_INTERSECTION) {
+                // Sta per uscire da strada verticale, deve girare
+                needsTurn = true;
+                ai.targetAngle = (ai.x < currentGridX * TILE_SIZE + TILE_SIZE/2) ? 0 : Math.PI; // Gira a dx o sx
+            } else if (currentTile === TILE_ROAD_H && frontTile !== TILE_ROAD_H && frontTile !== TILE_INTERSECTION) {
+                // Sta per uscire da strada orizzontale, deve girare
+                needsTurn = true;
+                ai.targetAngle = (ai.y < currentGridY * TILE_SIZE + TILE_SIZE/2) ? Math.PI/2 : -Math.PI/2; // Gira giù o su
+            } else if (currentTile === TILE_INTERSECTION) {
+                // All'incrocio, decide casualmente se girare o andare dritto (se non deve fermarsi)
+                if (!shouldStop && Math.random() < 0.3) { // 30% probabilità di girare
+                    const possibleTurns = [];
+                    // Controlla uscite possibili (semplificato)
+                    if (gameGrid[currentGridY]?.[currentGridX+1] === TILE_ROAD_H) possibleTurns.push(0); // Dx
+                    if (gameGrid[currentGridY]?.[currentGridX-1] === TILE_ROAD_H) possibleTurns.push(Math.PI); // Sx
+                    if (gameGrid[currentGridY+1]?.[currentGridX] === TILE_ROAD_V) possibleTurns.push(Math.PI/2); // Giù
+                    if (gameGrid[currentGridY-1]?.[currentGridX] === TILE_ROAD_V) possibleTurns.push(-Math.PI/2); // Su
+
+                    if (possibleTurns.length > 0) {
+                        // Evita inversione a U (angolo opposto a quello attuale)
+                        const currentDir = (Math.round(ai.angle / (Math.PI/2)) * (Math.PI/2)) % (Math.PI * 2);
+                        const oppositeDir = (currentDir + Math.PI) % (Math.PI * 2);
+                        const validTurns = possibleTurns.filter(angle => Math.abs(angle - oppositeDir) > 0.1);
+
+                        if (validTurns.length > 0) {
+                            ai.targetAngle = validTurns[Math.floor(Math.random() * validTurns.length)];
+                            needsTurn = true;
+                        } else {
+                            // Se unica uscita è inversione, vai dritto (se possibile)
+                            ai.targetAngle = currentDir;
+                            needsTurn = false;
+                        }
+                    }
+                } else {
+                    // Vai dritto (mantieni angolo attuale o target precedente)
+                    needsTurn = Math.abs(ai.angle - ai.targetAngle) > 0.1;
+                }
+            } else {
+                // Continua dritto sulla strada attuale
+                needsTurn = false;
+            }
+
+
+            // Applica Sterzo Graduale verso targetAngle
+            if (needsTurn || Math.abs(ai.angle - ai.targetAngle) > 0.05) {
+                const angleDiff = normalizeAngle(ai.targetAngle - ai.angle);
+                if (angleDiff > 0) {
+                    ai.isTurningRight = true;
+                } else {
+                    ai.isTurningLeft = true;
+                }
+                // Rallenta per girare
+                targetSpeed *= 0.6;
+            }
+
+
+            // Applica Accelerazione/Frenata
+            if (shouldStop) {
+                ai.state = 'stopping';
+                if (ai.speed > 0.1) {
+                    ai.isBraking = true;
+                } else {
+                    ai.speed = 0; // Fermati completamente
+                    ai.state = 'waiting';
+                    ai.patience = 3 + Math.random() * 5; // Resetta pazienza
+                }
+            } else if (ai.state === 'waiting') {
+                ai.patience -= delta;
+                if (ai.patience <= 0) { // Se ha aspettato troppo, prova a ripartire
+                    ai.state = 'driving';
+                }
+            } else {
+                ai.state = 'driving';
+                if (ai.speed < targetSpeed) {
+                    ai.isAccelerating = true;
+                }
+            }
+
+            ai.update(delta);
+
+            // Rimuovi AI se esce dai bordi del mondo
+            if (ai.x < -TILE_SIZE || ai.x > WORLD_WIDTH + TILE_SIZE || ai.y < -TILE_SIZE || ai.y > WORLD_HEIGHT + TILE_SIZE) {
+                removeAICar(ai);
+            }
+        }
+
+        function removeAICar(aiToRemove) {
+            aiCars = aiCars.filter(ai => ai !== aiToRemove);
+        }
+
+        // --- Funzioni di Collisione ---
+
+        function checkCollisions() {
+            const playerBounds = player.getBounds();
+
+            // Player vs AI Cars
+            aiCars.forEach(ai => {
+                if (checkSATCollision(playerBounds, ai.getBounds())) {
+                    handleCollision(player, ai);
+                }
+            });
+
+            // Player vs Buildings / Map Edges
+            const gridX = Math.floor(player.x / TILE_SIZE);
+            const gridY = Math.floor(player.y / TILE_SIZE);
+
+            // Controlla 8 tile attorno al giocatore + la sua
+            for (let rOffset = -1; rOffset <= 1; rOffset++) {
+                for (let cOffset = -1; cOffset <= 1; cOffset++) {
+                    const checkR = gridY + rOffset;
+                    const checkC = gridX + cOffset;
+
+                    if (checkR < 0 || checkR >= GRID_ROWS || checkC < 0 || checkC >= GRID_COLS || gameGrid[checkR][checkC] === TILE_BUILDING) {
+                        // Crea bounds per il tile del building/bordo
+                        const buildingBounds = [
+                            { x: checkC * TILE_SIZE, y: checkR * TILE_SIZE },
+                            { x: (checkC + 1) * TILE_SIZE, y: checkR * TILE_SIZE },
+                            { x: (checkC + 1) * TILE_SIZE, y: (checkR + 1) * TILE_SIZE },
+                            { x: checkC * TILE_SIZE, y: (checkR + 1) * TILE_SIZE }
+                        ];
+                        if (checkSATCollision(playerBounds, buildingBounds)) {
+                            handleCollision(player, null); // Collisione con ambiente
+                            return; // Esce dopo la prima collisione con ambiente
+                        }
+                    }
+                }
+            }
+        }
+
+        // Separating Axis Theorem (SAT) per collisione tra poligoni (rettangoli ruotati)
+        function checkSATCollision(poly1, poly2) {
+            const polygons = [poly1, poly2];
+            let minOverlap = null;
+
+            for (let i = 0; i < polygons.length; i++) {
+                const polygon = polygons[i];
+                for (let j = 0; j < polygon.length; j++) {
+                    const p1 = polygon[j];
+                    const p2 = polygon[(j + 1) % polygon.length];
+
+                    // Calcola asse perpendicolare al lato
+                    const edge = { x: p2.x - p1.x, y: p2.y - p1.y };
+                    const axis = { x: -edge.y, y: edge.x };
+                    normalizeVector(axis);
+
+                    // Proietta entrambi i poligoni sull'asse
+                    const proj1 = projectPolygon(axis, poly1);
+                    const proj2 = projectPolygon(axis, poly2);
+
+                    // Controlla sovrapposizione delle proiezioni
+                    const overlap = Math.min(proj1.max, proj2.max) - Math.max(proj1.min, proj2.min);
+                    if (overlap < 0) {
+                        return false; // Nessuna collisione trovata su questo asse
+                    }
+                }
+            }
+            return true; // Collisione trovata (sovrapposizione su tutti gli assi)
+        }
+
+        function projectPolygon(axis, polygon) {
+            let min = dotProduct(axis, polygon[0]);
+            let max = min;
+            for (let i = 1; i < polygon.length; i++) {
+                const p = dotProduct(axis, polygon[i]);
+                if (p < min) {
+                    min = p;
+                } else if (p > max) {
+                    max = p;
+                }
+            }
+            return { min, max };
+        }
+
+        function dotProduct(v1, v2) {
+            return v1.x * v2.x + v1.y * v2.y;
+        }
+
+        function normalizeVector(v) {
+            const len = Math.sqrt(v.x * v.x + v.y * v.y);
+            if (len !== 0) {
+                v.x /= len;
+                v.y /= len;
+            }
+        }
+        function normalizeAngle(angle) {
+            while (angle <= -Math.PI) angle += Math.PI * 2;
+            while (angle > Math.PI) angle -= Math.PI * 2;
+            return angle;
+        }
+
+
+        function handleCollision(obj1, obj2) {
+            if (gameOver) return;
+
+            console.log("Collisione!", obj1, obj2);
+            obj1.collided = true;
+            if (obj2) obj2.collided = true; // Segna anche l'altro oggetto se esiste
+
+            // Penalità semplice
+            if (obj1 === player) {
+                infractions += 5; // Penalità più alta per collisione
+                player.speed *= 0.2; // Riduci drasticamente velocità giocatore
+                // Potrebbe anche fermare il gioco:
+                gameOver = true;
+                showMessage("Incidente! Punteggio Infrazioni: " + infractions);
+            } else if (obj2 === player) { // Se obj1 è AI e obj2 è player
+                infractions += 5;
+                player.speed *= 0.2;
+                gameOver = true;
+                showMessage("Incidente! Punteggio Infrazioni: " + infractions);
+            } else {
+                // Collisione AI vs AI (semplice: si fermano)
+                obj1.speed = 0;
+                obj2.speed = 0;
+                obj1.state = 'waiting';
+                obj2.state = 'waiting';
+            }
+
+            // Aggiorna HUD infrazioni
+            document.getElementById('infractions').textContent = infractions;
+        }
+
+        function checkInfractions() {
+            if (gameOver) return;
+            // Controllo passaggio col rosso
+            const gridX = Math.floor(player.x / TILE_SIZE);
+            const gridY = Math.floor(player.y / TILE_SIZE);
+            const currentTile = (gameGrid[gridY] && gameGrid[gridY][gridX]);
+
+            if (currentTile === TILE_INTERSECTION && player.speed > 0.5) { // Se si muove nell'incrocio
+                const direction = (Math.abs(Math.cos(player.angle)) > Math.abs(Math.sin(player.angle))) ? 'h' : 'v';
+                trafficLights.forEach(light => {
+                    if (light.gridX === gridX && light.gridY === gridY && light.direction === direction) {
+                        if (light.state === 'red') {
+                            // Controlla se è appena entrato nell'incrocio col rosso
+                            // (Serve un meccanismo per non contare l'infrazione ripetutamente)
+                            if (!player.passedRedLight || player.passedRedLight.x !== gridX || player.passedRedLight.y !== gridY) {
+                                console.log("Passato col rosso!");
+                                infractions++;
+                                document.getElementById('infractions').textContent = infractions;
+                                player.passedRedLight = { x: gridX, y: gridY }; // Segna che ha passato questo rosso
+                            }
+                        } else {
+                            // Se passa col verde/giallo, resetta il flag per questo incrocio
+                            if (player.passedRedLight && player.passedRedLight.x === gridX && player.passedRedLight.y === gridY) {
+                                player.passedRedLight = null;
+                            }
+                        }
+                    }
+                });
+            } else {
+                // Se non è in un incrocio, resetta il flag generale (potrebbe non essere necessario)
+                // player.passedRedLight = null;
+            }
+        }
+
+
+        // --- Funzioni di Disegno ---
+
+        function drawWorld(ctx, cameraX, cameraY) {
+            // Calcola tile visibili
+            const startCol = Math.floor(cameraX / TILE_SIZE);
+            const endCol = Math.min(GRID_COLS, startCol + Math.ceil(canvasWidth / TILE_SIZE) + 1);
+            const startRow = Math.floor(cameraY / TILE_SIZE);
+            const endRow = Math.min(GRID_ROWS, startRow + Math.ceil(canvasHeight / TILE_SIZE) + 1);
+
+            for (let r = startRow; r < endRow; r++) {
+                for (let c = startCol; c < endCol; c++) {
+                    const tileType = gameGrid[r][c];
+                    const screenX = c * TILE_SIZE - cameraX;
+                    const screenY = r * TILE_SIZE - cameraY;
+
+                    switch (tileType) {
+                        case TILE_GRASS:
+                            ctx.fillStyle = '#a2d9a2'; // Verde erba più scuro
+                            ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+                            break;
+                        case TILE_ROAD_V:
+                        case TILE_ROAD_H:
+                        case TILE_INTERSECTION:
+                            ctx.fillStyle = '#666'; // Grigio scuro asfalto
+                            ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+                            // Disegna linee stradali (opzionale)
+                            ctx.strokeStyle = '#ccc'; // Linee bianche/grigie
+                            ctx.lineWidth = 2;
+                            if (tileType === TILE_ROAD_V) {
+                                ctx.beginPath();
+                                ctx.moveTo(screenX + TILE_SIZE / 2, screenY);
+                                ctx.lineTo(screenX + TILE_SIZE / 2, screenY + TILE_SIZE);
+                                ctx.stroke();
+                            } else if (tileType === TILE_ROAD_H) {
+                                ctx.beginPath();
+                                ctx.moveTo(screenX, screenY + TILE_SIZE / 2);
+                                ctx.lineTo(screenX + TILE_SIZE, screenY + TILE_SIZE / 2);
+                                ctx.stroke();
+                            }
+                            break;
+                        case TILE_BUILDING:
+                            ctx.fillStyle = `hsl(210, 15%, ${60 + (c*r)%20}%)`; // Variazioni di grigio/blu
+                            ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+                            // Aggiungi bordo per separare
+                            ctx.strokeStyle = '#444';
+                            ctx.lineWidth = 1;
+                            ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+                            break;
+                    }
+                }
+            }
+        }
+
+        function drawMinimap() {
+            const mapW = minimapCanvas.width;
+            const mapH = minimapCanvas.height;
+            const scaleX = mapW / WORLD_WIDTH;
+            const scaleY = mapH / WORLD_HEIGHT;
+
+            // Sfondo
+            minimapCtx.fillStyle = '#aaa'; // Grigio chiaro per sfondo mappa
+            minimapCtx.fillRect(0, 0, mapW, mapH);
+
+            // Disegna strade/incroci
+            minimapCtx.fillStyle = '#555'; // Grigio scuro strade
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    const tileType = gameGrid[r][c];
+                    if (tileType === TILE_ROAD_V || tileType === TILE_ROAD_H || tileType === TILE_INTERSECTION) {
+                        minimapCtx.fillRect(c * TILE_SIZE * scaleX, r * TILE_SIZE * scaleY, TILE_SIZE * scaleX, TILE_SIZE * scaleY);
+                    }
+                }
+            }
+
+            // Disegna AI cars
+            minimapCtx.fillStyle = 'red';
+            aiCars.forEach(ai => {
+                minimapCtx.fillRect(ai.x * scaleX - 1, ai.y * scaleY - 1, 3, 3); // Puntini rossi
+            });
+
+            // Disegna giocatore
+            minimapCtx.fillStyle = 'blue';
+            minimapCtx.fillRect(player.x * scaleX - 2, player.y * scaleY - 2, 4, 4); // Punto blu più grande
+        }
+
+        function drawHUD() {
+            document.getElementById('speed').textContent = Math.round(Math.abs(player.speed * 25)); // Scala velocità
+            // Infrazioni aggiornate altrove
+        }
+
+        // --- Game Loop ---
+
+        function gameLoop(timestamp) {
+            const delta = Math.min(0.05, (timestamp - lastTime) / 1000); // Delta time in secondi, con cap
+            lastTime = timestamp;
+
+            // --- Aggiornamenti ---
+            if (!gameOver) {
+                player.update(delta);
+                aiCars.forEach(ai => updateAI(ai, delta));
+                trafficLights.forEach(light => light.update(delta));
+                checkCollisions();
+                checkInfractions(); // Controlla passaggio col rosso
+
+                // Spawn AI
+                if (Math.random() < 0.015) { // Probabilità di spawn per frame
+                    spawnAICar();
+                }
+            }
+            updateCamera();
+
+            // --- Disegno ---
+            // Pulisci canvas principale
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            ctx.save();
+            // Disegna mondo
+            drawWorld(ctx, cameraX, cameraY);
+            // Disegna semafori
+            trafficLights.forEach(light => light.draw(ctx, cameraX, cameraY));
+            // Disegna AI cars
+            aiCars.forEach(ai => ai.draw(ctx, cameraX, cameraY));
+            // Disegna giocatore
+            player.draw(ctx, cameraX, cameraY);
+            ctx.restore();
+
+            // Disegna HUD e Minimappa
+            drawHUD();
+            drawMinimap();
+
+            // Richiedi frame successivo
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- Inizializzazione ed Esecuzione ---
+
+        function setupInput() {
+            window.addEventListener('keydown', (e) => {
+                const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+                if (keys.hasOwnProperty(key)) keys[key] = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+                if (keys.hasOwnProperty(key)) keys[key] = false;
+            });
+            document.getElementById('restartButton').addEventListener('click', restartGame);
+        }
+
+        function showMessage(text) {
+            document.getElementById('messageText').textContent = text;
+            document.getElementById('messageBox').style.display = 'block';
+        }
+
+        function hideMessage() {
+            document.getElementById('messageBox').style.display = 'none';
+        }
+
+        function restartGame() {
+            hideMessage();
+            gameOver = false;
+            infractions = 0;
+            aiCars = []; // Rimuovi tutte le auto AI
+            initializePlayer(); // Riposiziona giocatore
+            initializeTrafficLights(); // Resetta stato semafori
+            cameraX = player.x - canvasWidth / 2; // Resetta camera subito
+            cameraY = player.y - canvasHeight / 2;
+            cameraX = Math.max(0, Math.min(WORLD_WIDTH - canvasWidth, cameraX));
+            cameraY = Math.max(0, Math.min(WORLD_HEIGHT - canvasHeight, cameraY));
+            document.getElementById('infractions').textContent = '0';
+            // Il loop continua automaticamente
+        }
+
+        // Inizia il gioco
+        createWorldGrid();
+        initializeTrafficLights();
+        initializePlayer();
+        // Spawn iniziale AI
+        for(let i=0; i<8; i++) spawnAICar();
+        setupInput();
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>
