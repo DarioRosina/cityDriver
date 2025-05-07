@@ -132,6 +132,8 @@
         const TILE_INTERSECTION = 3;
         const TILE_BUILDING = 4;
 
+        const MAX_INFRACTIONS = 25; // Numero massimo di infrazioni
+
         // --- Stato del Gioco ---
         let player;
         let aiCars = [];
@@ -200,8 +202,8 @@
                 }
 
                 // Applica movimento basato su angolo e velocità
-                this.x += Math.cos(this.angle) * this.speed * delta * 60; // Scala per delta
-                this.y += Math.sin(this.angle) * this.speed * delta * 60;
+                this.x += Math.cos(this.angle) * this.speed * delta * 12; // Scala per delta
+                this.y += Math.sin(this.angle) * this.speed * delta * 12;
 
                  // Reset flags input (per AI verranno impostati diversamente)
                  if (this === player) { // Solo per il giocatore
@@ -868,6 +870,12 @@
                 // Spawn AI
                 if (Math.random() < 0.015) { // Probabilità di spawn per frame
                     spawnAICar();
+                }
+
+                // Controlla se il numero di infrazioni ha superato il limite.
+                if (!gameOver && infractions > MAX_INFRACTIONS) {
+                    gameOver = true;
+                    showMessage(`Punteggio Infrazioni: ${infractions}\nPatente ritirata!`);
                 }
             }
             updateCamera();
