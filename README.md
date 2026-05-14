@@ -6,7 +6,7 @@ Un semplice simulatore di guida 2D top-down creato con HTML, CSS e JavaScript Ca
 
 City Driver è un gioco in cui controlli un'auto in una città generata proceduralmente con traffico AI e semafori funzionanti. L'obiettivo è guidare rispettando le regole della strada, evitando collisioni e infrazioni.
 
-**Demo Online:** Prova la versione live qui: [https://city-driver.vercel.app](https://city-driver.vercel.app)
+**Demo Online:** Prova la versione live qui: [https://citydriver.darioros.it](https://citydriver.darioros.it)
 
 ![Anteprima Interfaccia Page Builder](screenshot/cityDriver_v1_0_0.png)
 
