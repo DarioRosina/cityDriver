@@ -8,7 +8,7 @@ City Driver è un gioco in cui controlli un'auto in una città generata procedur
 
 **Demo Online:** Prova la versione live qui: [https://city-driver.vercel.app](https://city-driver.vercel.app)
 
-![Anteprima Interfaccia Page Builder](screenshot/previewInterface_000.jpg)
+![Anteprima Interfaccia Page Builder](screenshot/cityDriver_v1_0_0.png)
 
 ## Come Giocare
 
@@ -18,7 +18,7 @@ City Driver è un gioco in cui controlli un'auto in una città generata procedur
     *   **Frenare/Retromarcia:** `S` o `Freccia Giù`
     *   **Sterzare a Sinistra:** `A` o `Freccia Sinistra`
     *   **Sterzare a Destra:** `D` o `Freccia Destra`
-3.  **Obiettivo:** Guida per la città. Cerca di evitare incidenti con le altre auto e rispetta i semafori rossi. Le infrazioni vengono conteggiate. Il gioco termina se commetti troppe infrazioni o hai un incidente grave.
+3.  **Obiettivo:** Guida per la città. Cerca di evitare incidenti con le altre auto e rispetta i semafori rossi. Le infrazioni vengono conteggiate. Il gioco termina se commetti troppe infrazioni o sbatti contro un palazzo.
 
 ## Funzionalità Principali
 
@@ -28,7 +28,6 @@ City Driver è un gioco in cui controlli un'auto in una città generata procedur
 *   **Fisica Semplice:** Modello di guida basilare con accelerazione, frenata, attrito e sterzo.
 *   **Sistema di Infrazioni:** Il gioco tiene traccia delle collisioni e del passaggio con il semaforo rosso.
 *   **HUD:** Interfaccia utente che mostra la velocità attuale e il numero di infrazioni.
-*   **Minimappa:** Una piccola mappa nell'angolo in basso a destra che mostra la posizione del giocatore nel mondo.
 *   **Camera Dinamica:** La visuale segue l'auto del giocatore.
 
 ## Tecnologie Utilizzate
