@@ -1,3 +1,6 @@
+[1.0.4] 
+- Adattamento alla versione mobile
+
 [1.0.3] 
 - Quando c'è un'infrazione di passaggio con il rosso, viene visualizzata una piccola luce flash accanto al semaforo.
 - Il gioco termina quando si sbatte contro un palazzo o si commettono 26 infrazioni.
