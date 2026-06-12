@@ -1,3 +1,6 @@
+[1.0.5] 
+- Scrivi un prompt per aggiungere un nuovo modo per l'utente di spostare il taxi nel gioco. Il taxi deve potersi muovere nel punto dove si è cliccato/toccato accelerando all'inizio e rallentando alla fine. Se si clicca in un punto molto vicino alla parte posteriore dell'auto, l'auto invece di avanzare farà retromarcia fino a raggiungere il punto che è stato cliccato/toccato. Lascia un pallino giallo nel punto toccato. Verrà rimosso quando si seleziona un altro punto o quando il taxi raggiunge il punto cliccato.
+
 [1.0.4] 
 - Adattamento alla versione mobile
 
