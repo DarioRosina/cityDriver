@@ -1,4 +1,4 @@
-# City Driver v1.0.3
+# City Driver
 
 Un simulatore di guida 2D top-down con missioni, traffico AI e veicoli speciali. Creato con HTML, CSS e JavaScript Canvas.
 
